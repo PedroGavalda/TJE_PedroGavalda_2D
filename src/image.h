@@ -91,6 +91,7 @@ public:
 
 	//save or load images from the hard drive
 	bool loadTGA(const char* filename);
+	bool load(const char* filename);
 	bool saveTGA(const char* filename);
 
 	//manager of images

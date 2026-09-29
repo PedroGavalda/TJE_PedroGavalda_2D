@@ -95,6 +95,12 @@ if (APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${cocoa_lib})
 endif()
 
+# json
+include_directories(libraries/json)
+
+# stb headers
+include_directories(libraries/stb)
+
 # sdl2
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2main)

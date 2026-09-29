@@ -6,6 +6,8 @@
 	 + This is the lowest level, here we access the system to create the opengl Context
 	 + It takes all the events from SDL and redirect them to the game
 */
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #include "includes.h"
 

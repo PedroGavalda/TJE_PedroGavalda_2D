@@ -1,5 +1,7 @@
 #include "image.h"
 #include <algorithm>    // std::max, min, clamp
+#include <stb_image.h>
+
 #include "utils.h"
 
 template <typename T> T clamp(const T& value, const T& low, const T& high)
@@ -417,6 +419,28 @@ bool Image::loadTGA(const char* filename)
 
 	delete[]tgainfo->data;
 	delete tgainfo;
+	std::cout << " + Image loaded: " << filename << std::endl;
+
+	return true;
+}
+
+bool Image::load(const char* filename) {
+	int w = 0, h = 0, c = 0;
+	unsigned char* raw_data = stbi_load(filename, &w, &h, &c, 4u);
+
+	if (w == 0 || h == 0 || c == 0) {
+		std::cerr << "Image with no channels: " << filename << std::endl;
+		return false;
+	}
+
+	width = w;
+	height = h;
+	pixels = new Color[width * height];
+
+	memcpy(pixels, raw_data, sizeof(unsigned char) * w * h * c);
+
+	stbi_image_free(raw_data);
+
 	std::cout << " + Image loaded: " << filename << std::endl;
 
 	return true;

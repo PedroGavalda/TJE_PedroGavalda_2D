@@ -27,7 +27,7 @@ typedef unsigned int uint32;
 inline float random(float range = 1.0f, float offset = 0.0f) { return ((rand() % 1000) / (1000.0f)) * range + offset; }
 inline float clamp(float a, float min, float max) { return a < min ? min : (a > max ? max : a); }
 inline int clampInt(int a, int min, int max) { return a < min ? min : (a > max ? max : a); }
-inline float lerp(float a, float b, float f) { return a * (1.0f - f) + b * f; }
+inline float LERP(float a, float b, float f) { return a * (1.0f - f) + b * f; }
 
 //template for vector 2 classes
 template <typename T>
