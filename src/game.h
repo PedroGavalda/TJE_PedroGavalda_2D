@@ -56,5 +56,53 @@ public:
 	void onAudio(float* buffer, unsigned int len, double time, SDL_AudioSpec &audio_spec); //called constantly to fill the audio buffer
 };
 
+// COSAS AÑADIDAS DE EJEMPLOQUE QUIZAS NO ME SIRVEN
+enum eCellType: uint16 { EMPTY, START, WALL, DOOR, CHEST };
+enum eItemType: uint16 { NOTHING, SWORD, POTION };
+
+struct sCell {
+	eCellType type;
+	eItemType item;
+	uint16 tileId;
+};
+
+struct sObject {
+	eCellType type;
+	Vector2 position;
+};
+
+struct sLayer {
+	sCell* data;
+};
+
+class GameMap {
+public:
+	int width = 0;
+	int height = 0;
+
+	int tile_width = 8;
+	int tile_height = 8;
+
+	sLayer* layers = nullptr;
+
+	GameMap() {}
+
+	GameMap(int w, int h) {
+		width = w;
+		height = h;
+	}
+
+	sCell& getCell(int x, int y, int l) {
+		return layers[l].data[x + y * width];
+	}
+};
+
+// MIO RITMO
+
+struct Note {
+	double time;
+	int key;
+	bool completed;
+};
 
 #endif 

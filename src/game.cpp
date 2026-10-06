@@ -2,6 +2,8 @@
 #include "utils.h"
 #include "input.h"
 #include "image.h"
+#include "json.hpp"
+#include <fstream>
 
 #include <cmath>
 
@@ -11,6 +13,19 @@ Image font;
 Image minifont;
 Image sprite;
 Color bgcolor(130, 80, 100);
+
+//mio
+double target_time = 5.0;
+double difference = 0.0;
+std::vector<Note> notes = {
+	{3.0, SDL_SCANCODE_D, false},
+	{3.5, SDL_SCANCODE_F, false},
+	{4.5, SDL_SCANCODE_J, false},
+	{5.0, SDL_SCANCODE_K, false}
+};
+int current_note = 0;
+int score = 0;
+std::string score_message;
 
 Game::Game(int window_width, int window_height, SDL_Window* window)
 {
@@ -48,11 +63,65 @@ void Game::render(void)
 		framebuffer.fill( bgcolor );								//fills the image with one color
 		//framebuffer.drawLine( 0, 0, 100,100, Color::RED );		//draws a line
 		//framebuffer.drawImage( sprite, 0, 0 );					//draws full image
-		framebuffer.drawImage( sprite, 0, 0, framebuffer.width, framebuffer.height );			//draws a scaled image
+		//framebuffer.drawImage( sprite, 0, 0, framebuffer.width, framebuffer.height );			//draws a scaled image
 		//framebuffer.drawImage( sprite, 0, 0, Area(0,0,14,18) );	//draws only a part of an image
-		framebuffer.drawText( "Hello World", 0, 0, font );				//draws some text using a bitmap font in an image (assuming every char is 7x9)
+		//framebuffer.drawText( "Hello World", 0, 0, font );				//draws some text using a bitmap font in an image (assuming every char is 7x9)
 		//framebuffer.drawText( toString(time), 1, 10, minifont,4,6);	//draws some text using a bitmap font in an image (assuming every char is 4x6)
+		/*
+		framebuffer.drawText("Time:", 0, 10, font);
+		framebuffer.drawText(toString(time), 40, 10, minifont, 4, 6);
 
+		framebuffer.drawText("Target:", 1, 20, font);
+		if (current_note < notes.size()) { framebuffer.drawText(toString(notes[current_note].time),60, 25,minifont, 4, 6); }
+		
+		framebuffer.drawText("Difference:", 1, 30, font);
+		framebuffer.drawText(toString(difference), 100, 35, minifont, 4, 6);
+
+		framebuffer.drawText("Score:", 1, 40, font);
+		framebuffer.drawText(toString(score), 60, 40, font);
+
+		framebuffer.drawText("Rank:", 1, 50, font);
+		framebuffer.drawText(score_message, 60, 50, font);
+		*/
+		framebuffer.drawText("Rank:", 1, 0, font);
+		framebuffer.drawText(score_message, 40, 0, font);
+
+		for (int i = 0; i < notes.size(); i++)
+		{
+			Note& note = notes[i];
+
+			float start_y = 0;
+			float target_y = 100;
+
+			double travel_time = 1.0;
+			double spawn_time = note.time - travel_time;
+			
+			if (time < spawn_time)
+				continue;
+
+			double progress = (time - spawn_time) / travel_time;
+
+			if (progress > 1.0)
+				continue;
+
+			float y = 20 + progress * (target_y - start_y);
+			float x;
+
+			if      (note.key == SDL_SCANCODE_D) x = 15;
+			else if (note.key == SDL_SCANCODE_F) x = 45;
+			else if (note.key == SDL_SCANCODE_J) x = 75;
+			else if (note.key == SDL_SCANCODE_K) x = 105;
+
+			framebuffer.drawRectangle(x, y, 30, 5, 1);
+		}
+
+		framebuffer.drawLine(15, 20, 15, 100, Color::WHITE);
+		framebuffer.drawLine(45, 20, 45, 100, Color::WHITE);
+		framebuffer.drawLine(75, 20, 75, 100, Color::WHITE);
+		framebuffer.drawLine(105, 20, 105, 100, Color::WHITE);
+		framebuffer.drawLine(135, 20, 135, 100, Color::WHITE);
+		
+		framebuffer.drawLine(15, 100, 135, 100, Color::GRAY);
 	//send image to screen
 	showFramebuffer(&framebuffer);
 }
@@ -70,9 +139,49 @@ void Game::update(double seconds_elapsed)
 	{
 	}
 
+	if (current_note >= notes.size())
+	{
+		return;
+	}
+	
+	Note& note = notes[current_note];
+
+	if (Input::wasKeyPressed(SDL_SCANCODE_D) ||
+		Input::wasKeyPressed(SDL_SCANCODE_F) ||
+		Input::wasKeyPressed(SDL_SCANCODE_J) ||
+		Input::wasKeyPressed(SDL_SCANCODE_K)) {
+
+		if (Input::wasKeyPressed(note.key)) {
+			difference = fabs(time - note.time);
+			if (difference < 0.2) {
+				score += 100;
+				score_message = "PERFECT!";
+			}
+			else if (difference < 0.3) {
+				score += 50;
+				score_message = "GOOD";
+			}
+			else if (difference < 0.5) {
+				score += 10;
+				score_message = "MID";
+			}
+			else {
+				score_message = "MISS";
+			}
+			note.completed = true;
+			current_note++;
+		}
+		else {
+			note.completed = true;
+			current_note++;
+			score_message = "ERROR";
+		}
+		
+	}
 	//example of 'was pressed'
 	if (Input::wasKeyPressed(SDL_SCANCODE_A)) //if key A was pressed
 	{
+	
 	}
 	if (Input::wasKeyPressed(SDL_SCANCODE_Z)) //if key Z was pressed
 	{
@@ -242,4 +351,46 @@ void Game::onAudio(float *buffer, unsigned int len, double time, SDL_AudioSpec& 
 {
 	//fill the audio buffer using our custom retro synth
 	synth.generateAudio(buffer, len, audio_spec);
+}
+
+// COSAS AÑADIDAS QUE QUIZAS NO ME SIRVEN
+GameMap* loadGameMap(const char* filename) {
+	using json = nlohmann::json;
+	std::ifstream f(filename);
+	if (!f.good())
+		return nullptr;
+	json jData = json::parse(f);
+
+	int w = jData["width"];
+	int h = jData["height"];
+	int numLayers = jData["layers"].size();
+
+	GameMap* map = new GameMap(w, h);
+	//Allocate memory for data inside each layer
+	map->layers = new sLayer[numLayers];
+	map->tile_width = jData["tilewidth"];
+	map->tile_height = jData["tileheight"];
+
+	for (int l = 0; l < numLayers; l++) {
+		//Allocate memory for data inside each layer
+		map->layers[l].data = new sCell[w * h];
+		json layer = jData["layers"][l];
+		for (int x = 0; x < map->width; x++) {
+			for (int y = 0; y < map->height;y++) {
+				int index = x + y * map->width;
+				int tileId = layer["data"][index].get<int>() - 1;
+				sCell& cell = map->getCell(x, y, l);
+				cell.tileId = tileId;
+				if (l == 0) {
+					if (tileId == 652) { //Change Id if you want
+						cell.type = EMPTY;
+					}
+					else if (tileId == 910) { //Change Id If you want
+						cell.type = WALL;
+					}
+				}
+			}
+		}
+	}
+	return map;
 }
