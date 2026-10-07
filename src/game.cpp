@@ -14,18 +14,33 @@ Image minifont;
 Image sprite;
 Color bgcolor(130, 80, 100);
 
-//mio
-double target_time = 5.0;
+// MIO RITMO
 double difference = 0.0;
-std::vector<Note> notes = {
-	{3.0, SDL_SCANCODE_D, false},
-	{3.5, SDL_SCANCODE_F, false},
-	{4.5, SDL_SCANCODE_J, false},
-	{5.0, SDL_SCANCODE_K, false}
+
+int current_left = 0;
+std::vector<Note> left_notes = {
+	{3.0, false},
+	{5.0, false}
 };
-int current_note = 0;
+
+int current_down = 0;
+std::vector<Note> down_notes = {
+	{3.5, false},
+};
+
+int current_up = 0;
+std::vector<Note> up_notes = {
+	{4.5, false},
+};
+
+int current_right = 0;
+std::vector<Note> right_notes = {
+	{5.0, false}
+};
+
 int score = 0;
 std::string score_message;
+
 
 Game::Game(int window_width, int window_height, SDL_Window* window)
 {
@@ -67,53 +82,14 @@ void Game::render(void)
 		//framebuffer.drawImage( sprite, 0, 0, Area(0,0,14,18) );	//draws only a part of an image
 		//framebuffer.drawText( "Hello World", 0, 0, font );				//draws some text using a bitmap font in an image (assuming every char is 7x9)
 		//framebuffer.drawText( toString(time), 1, 10, minifont,4,6);	//draws some text using a bitmap font in an image (assuming every char is 4x6)
-		/*
-		framebuffer.drawText("Time:", 0, 10, font);
-		framebuffer.drawText(toString(time), 40, 10, minifont, 4, 6);
-
-		framebuffer.drawText("Target:", 1, 20, font);
-		if (current_note < notes.size()) { framebuffer.drawText(toString(notes[current_note].time),60, 25,minifont, 4, 6); }
 		
-		framebuffer.drawText("Difference:", 1, 30, font);
-		framebuffer.drawText(toString(difference), 100, 35, minifont, 4, 6);
-
-		framebuffer.drawText("Score:", 1, 40, font);
-		framebuffer.drawText(toString(score), 60, 40, font);
-
-		framebuffer.drawText("Rank:", 1, 50, font);
-		framebuffer.drawText(score_message, 60, 50, font);
-		*/
 		framebuffer.drawText("Rank:", 1, 0, font);
 		framebuffer.drawText(score_message, 40, 0, font);
-
-		for (int i = 0; i < notes.size(); i++)
-		{
-			Note& note = notes[i];
-
-			float start_y = 0;
-			float target_y = 100;
-
-			double travel_time = 1.0;
-			double spawn_time = note.time - travel_time;
-			
-			if (time < spawn_time)
-				continue;
-
-			double progress = (time - spawn_time) / travel_time;
-
-			if (progress > 1.0)
-				continue;
-
-			float y = 20 + progress * (target_y - start_y);
-			float x;
-
-			if      (note.key == SDL_SCANCODE_D) x = 15;
-			else if (note.key == SDL_SCANCODE_F) x = 45;
-			else if (note.key == SDL_SCANCODE_J) x = 75;
-			else if (note.key == SDL_SCANCODE_K) x = 105;
-
-			framebuffer.drawRectangle(x, y, 30, 5, 1);
-		}
+		
+		drawNotes(framebuffer, left_notes, 10);
+		drawNotes(framebuffer, down_notes, 45);
+		drawNotes(framebuffer, up_notes, 80);
+		drawNotes(framebuffer, right_notes, 115);
 
 		framebuffer.drawLine(15, 20, 15, 100, Color::WHITE);
 		framebuffer.drawLine(45, 20, 45, 100, Color::WHITE);
@@ -138,46 +114,48 @@ void Game::update(double seconds_elapsed)
 	if (Input::isKeyPressed(SDL_SCANCODE_DOWN)) //if key down
 	{
 	}
-
-	if (current_note >= notes.size())
+	/*
+	if (current_note >= size)
 	{
 		return;
+	}*/
+
+	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT)) {
+		Note& note_left = left_notes[current_left];
+		if (current_left < left_notes.size()) {
+			difference = fabs(note_left.time - time);
+			evaluate_note(difference);
+			if (score_message != "MISS") current_left++;
+		}
+	}
+
+	if (Input::wasKeyPressed(SDL_SCANCODE_DOWN)) {
+		Note& note_down = up_notes[current_down];
+		if (current_down < down_notes.size()) {
+			difference = fabs(note_down.time - time);
+			evaluate_note(difference);
+			if (score_message != "MISS") current_down++;
+		}
 	}
 	
-	Note& note = notes[current_note];
-
-	if (Input::wasKeyPressed(SDL_SCANCODE_D) ||
-		Input::wasKeyPressed(SDL_SCANCODE_F) ||
-		Input::wasKeyPressed(SDL_SCANCODE_J) ||
-		Input::wasKeyPressed(SDL_SCANCODE_K)) {
-
-		if (Input::wasKeyPressed(note.key)) {
-			difference = fabs(time - note.time);
-			if (difference < 0.2) {
-				score += 100;
-				score_message = "PERFECT!";
-			}
-			else if (difference < 0.3) {
-				score += 50;
-				score_message = "GOOD";
-			}
-			else if (difference < 0.5) {
-				score += 10;
-				score_message = "MID";
-			}
-			else {
-				score_message = "MISS";
-			}
-			note.completed = true;
-			current_note++;
+	if (Input::wasKeyPressed(SDL_SCANCODE_UP)) {
+		Note& note_up = up_notes[current_up];
+		if (current_up < up_notes.size()) {
+			difference = fabs(note_up.time - time);
+			evaluate_note(difference);
+			if(score_message != "MISS") current_up++;
 		}
-		else {
-			note.completed = true;
-			current_note++;
-			score_message = "ERROR";
-		}
-		
 	}
+
+	if (Input::wasKeyPressed(SDL_SCANCODE_RIGHT)) {
+		Note& note_right = up_notes[current_right];
+		if (current_right < right_notes.size()) {
+			difference = fabs(note_right.time - time);
+			evaluate_note(difference);
+			if (score_message!= "MISS") current_right++;
+		}
+	}
+
 	//example of 'was pressed'
 	if (Input::wasKeyPressed(SDL_SCANCODE_A)) //if key A was pressed
 	{
@@ -393,4 +371,57 @@ GameMap* loadGameMap(const char* filename) {
 		}
 	}
 	return map;
+}
+
+// MIO RITMO
+void drawNotes(Image& framebuffer, std::vector<Note>& notes, float x)
+{
+	float start_y = 20;
+	float target_y = 100;
+	double travel_time = 1.0;
+	double  late_time = 0.3;
+
+	double current_time = Game::instance->time;
+
+	for (int i = 0; i < notes.size(); i++)
+	{
+		Note& note = notes[i];
+
+		if (note.completed)
+			return;
+
+		double spawn_time = note.time - travel_time;
+
+		// no ha aparecido
+		if (current_time < spawn_time)
+			continue;
+
+		// tiempo despues de la nota
+		if (current_time > note.time + late_time) //cambiar
+			continue;
+
+		double progress = (current_time - spawn_time) / travel_time;
+
+		float y = start_y + progress * (target_y - start_y);
+
+		framebuffer.drawRectangle(x, y, 30, 3, 1);
+	}
+}
+
+void evaluate_note(double difference) {
+	if (difference < 0.1) {
+		score += 100;
+		score_message = "PERFECT!";
+	}
+	else if (difference < 0.2) {
+		score += 50;
+		score_message = "GOOD";
+	}
+	else if (difference < 0.3) {
+		score += 10;
+		score_message = "MID";
+	}
+	else {
+		score_message = "MISS";
+	}
 }

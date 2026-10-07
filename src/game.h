@@ -99,10 +99,25 @@ public:
 
 // MIO RITMO
 
+struct Song {
+	std::string title;
+	std::string file_direction;
+};
+
 struct Note {
 	double time;
-	int key;
 	bool completed;
 };
+
+struct Stage { 
+	Song song;
+	std::vector<Note> notes;
+};
+
+
+
+void drawNotes(Image& framebuffer, std::vector<Note>& notes, float x);
+
+void evaluate_note(double difference);
 
 #endif 
