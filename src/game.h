@@ -112,12 +112,20 @@ struct Note {
 struct Stage { 
 	Song song;
 	std::vector<Note> notes;
+	int max_score;
 };
 
+void init_song(Song song);
 
+void draw_rhythm_scene(Image& framebuffer);
 
-void drawNotes(Image& framebuffer, std::vector<Note>& notes, float x);
+void draw_progress_bar(Image& framebuffer);
+
+void draw_notes(Image& framebuffer, std::vector<Note>& notes, int key);
 
 void evaluate_note(double difference);
 
+void update_notes(std::vector<Note>& notes, int& current_index);
+
+int load_notes(const std::string& filename);
 #endif 

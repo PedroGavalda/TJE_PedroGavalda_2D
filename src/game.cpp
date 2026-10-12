@@ -7,6 +7,13 @@
 
 #include <cmath>
 
+#define UP 0
+#define LEFT 1
+#define RIGHT 2
+#define DOWN 3
+
+#define NOTE_SCORE 100
+
 Game* Game::instance = NULL;
 
 Image font;
@@ -15,31 +22,36 @@ Image sprite;
 Color bgcolor(130, 80, 100);
 
 // MIO RITMO
+int score = 0;
+std::string score_message;
+
 double difference = 0.0;
 
 int current_left = 0;
-std::vector<Note> left_notes = {
-	{3.0, false},
-	{5.0, false}
-};
-
 int current_down = 0;
-std::vector<Note> down_notes = {
-	{3.5, false},
-};
-
 int current_up = 0;
-std::vector<Note> up_notes = {
-	{4.5, false},
-};
-
 int current_right = 0;
-std::vector<Note> right_notes = {
-	{5.0, false}
-};
 
-int score = 0;
-std::string score_message;
+std::vector<Note> left_notes;
+std::vector<Note> down_notes;
+std::vector<Note> up_notes;
+std::vector<Note> right_notes;
+
+Song song;
+double song_delay = 3.0;
+bool music_started = false;
+int note_count;
+int max_score;
+
+Synth::Sample* mario_sample = nullptr;
+Synth::Sample* hit_sample = nullptr;
+
+// RITMO ASSETS
+Image note_sprites;
+Image runner_sprites;
+Image progress_bar;
+Image arrow_background;
+Image run_background;
 
 
 Game::Game(int window_width, int window_height, SDL_Window* window)
@@ -60,9 +72,22 @@ Game::Game(int window_width, int window_height, SDL_Window* window)
 	minifont.load("data/mini-font-white-4x6.tga"); //load bitmap-font image
 	sprite.load("data/spritesheet.tga"); //example to load an sprite
 
-	//enableAudio(); //enable this line if you plan to add audio to your application
-	//synth.playSample("data/coin.wav",1,true);
-	//synth.osc1.amplitude = 0.5;
+	// RITMO
+	note_sprites.load("data/arrows.tga");
+	runner_sprites.load("data/miku_run_1.tga");
+	progress_bar.load("data/progress_bar.tga");
+	arrow_background.load("data/arrow_background.tga");
+	run_background.load("data/run_background.png");
+
+	enableAudio(); //enable this line if you plan to add audio to your application
+	mario_sample = synth.loadSample("data/mario3.wav");
+	hit_sample = synth.loadSample("data/mouseclick.wav");
+	//.osc1.amplitude = 0.5;
+
+	song = { "Mario 1-1", "data/mario.txt" };
+	load_notes(song.file_direction);
+	note_count = left_notes.size() + down_notes.size() + up_notes.size() + right_notes.size();
+	max_score = note_count * NOTE_SCORE;
 }
 
 //what to do when the image has to be draw
@@ -83,21 +108,13 @@ void Game::render(void)
 		//framebuffer.drawText( "Hello World", 0, 0, font );				//draws some text using a bitmap font in an image (assuming every char is 7x9)
 		//framebuffer.drawText( toString(time), 1, 10, minifont,4,6);	//draws some text using a bitmap font in an image (assuming every char is 4x6)
 		
-		framebuffer.drawText("Rank:", 1, 0, font);
-		framebuffer.drawText(score_message, 40, 0, font);
+	draw_rhythm_scene(framebuffer);
+	draw_notes(framebuffer, up_notes, UP);
+	draw_notes(framebuffer, left_notes, LEFT);
+	draw_notes(framebuffer, down_notes, DOWN);
+	draw_notes(framebuffer, right_notes, RIGHT);
+	draw_progress_bar(framebuffer);
 		
-		drawNotes(framebuffer, left_notes, 10);
-		drawNotes(framebuffer, down_notes, 45);
-		drawNotes(framebuffer, up_notes, 80);
-		drawNotes(framebuffer, right_notes, 115);
-
-		framebuffer.drawLine(15, 20, 15, 100, Color::WHITE);
-		framebuffer.drawLine(45, 20, 45, 100, Color::WHITE);
-		framebuffer.drawLine(75, 20, 75, 100, Color::WHITE);
-		framebuffer.drawLine(105, 20, 105, 100, Color::WHITE);
-		framebuffer.drawLine(135, 20, 135, 100, Color::WHITE);
-		
-		framebuffer.drawLine(15, 100, 135, 100, Color::GRAY);
 	//send image to screen
 	showFramebuffer(&framebuffer);
 }
@@ -106,6 +123,16 @@ void Game::update(double seconds_elapsed)
 {
 	//Add here your update method
 	//...
+	if (!music_started && time >= song_delay)
+	{
+		synth.playSample(mario_sample, 1.0f, false);
+		music_started = true;
+	}
+
+	update_notes(left_notes, current_left);
+	update_notes(down_notes, current_down);
+	update_notes(up_notes, current_up);
+	update_notes(right_notes, current_right);
 
 	//Read the keyboard state, to see all the keycodes: https://wiki.libsdl.org/SDL_Keycode
 	if (Input::isKeyPressed(SDL_SCANCODE_UP)) //if key up
@@ -121,42 +148,63 @@ void Game::update(double seconds_elapsed)
 	}*/
 
 	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT)) {
-		Note& note_left = left_notes[current_left];
 		if (current_left < left_notes.size()) {
-			difference = fabs(note_left.time - time);
-			evaluate_note(difference);
-			if (score_message != "MISS") current_left++;
+			Note& note = left_notes[current_left];
+			difference = fabs(note.time - (time - song_delay));
+
+			if (difference <= 0.3) {
+				evaluate_note(difference);
+				note.completed = true;
+				current_left++;
+			}
 		}
 	}
 
 	if (Input::wasKeyPressed(SDL_SCANCODE_DOWN)) {
-		Note& note_down = up_notes[current_down];
 		if (current_down < down_notes.size()) {
-			difference = fabs(note_down.time - time);
-			evaluate_note(difference);
-			if (score_message != "MISS") current_down++;
+			Note& note = down_notes[current_down];
+			difference = fabs(note.time - (time - song_delay));
+			
+			if (difference <= 0.3) {
+				evaluate_note(difference);
+				note.completed = true;
+				current_down++;
+			}
 		}
 	}
 	
 	if (Input::wasKeyPressed(SDL_SCANCODE_UP)) {
-		Note& note_up = up_notes[current_up];
 		if (current_up < up_notes.size()) {
-			difference = fabs(note_up.time - time);
-			evaluate_note(difference);
-			if(score_message != "MISS") current_up++;
+			Note& note = up_notes[current_up];
+			difference = fabs(note.time - (time - song_delay));
+
+			if (difference <= 0.3) {
+				evaluate_note(difference);
+				note.completed = true;
+				current_up++;
+			}
 		}
 	}
 
 	if (Input::wasKeyPressed(SDL_SCANCODE_RIGHT)) {
-		Note& note_right = up_notes[current_right];
 		if (current_right < right_notes.size()) {
-			difference = fabs(note_right.time - time);
-			evaluate_note(difference);
-			if (score_message!= "MISS") current_right++;
+			Note& note = right_notes[current_right];
+			difference = fabs(note.time - (time - song_delay));
+			
+			if (difference <= 0.3) {
+				evaluate_note(difference);
+				note.completed = true;
+				current_right++;
+			}
 		}
 	}
 
-	//example of 'was pressed'
+	// podria evitar duplicidad aqui
+	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT) || Input::wasKeyPressed(SDL_SCANCODE_RIGHT) || Input::wasKeyPressed(SDL_SCANCODE_UP) || Input::wasKeyPressed(SDL_SCANCODE_DOWN)) 
+	{
+		synth.playSample(hit_sample, 0.5f, false);
+	}
+
 	if (Input::wasKeyPressed(SDL_SCANCODE_A)) //if key A was pressed
 	{
 	
@@ -374,25 +422,53 @@ GameMap* loadGameMap(const char* filename) {
 }
 
 // MIO RITMO
-void drawNotes(Image& framebuffer, std::vector<Note>& notes, float x)
+void draw_rhythm_scene(Image& framebuffer)
 {
-	float start_y = 20;
-	float target_y = 100;
+	// background
+	framebuffer.drawImage(run_background, 0, 0);
+	framebuffer.drawImage(arrow_background, 0, 0);
+	// arrow background
+
+	framebuffer.drawImage(note_sprites, 10, 60, Area(0, 0, 17, 17));	//left arrow
+	framebuffer.drawImage(note_sprites,	10, 100, Area(21, 0, 17, 17));	//down arrow
+	framebuffer.drawImage(note_sprites,	10, 40, Area(42, 0, 17, 17));	//up arrow
+	framebuffer.drawImage(note_sprites,	10, 80, Area(63, 0, 17, 17));	//right arrow
+
+}
+
+void draw_progress_bar(Image& framebuffer) {
+	if (max_score <= 0)
+		return;
+
+	float progress = (float)score / max_score;
+
+	if (progress > 1.0f)
+		progress = 1.0f;
+
+	if (progress < 0.0f)
+		progress = 0.0f;
+
+	int bar_width = (int)(progress * 158);
+
+	framebuffer.drawRectangle(1, 35, bar_width, 3, Color::CYAN);
+	framebuffer.drawImage(progress_bar, 0, 0);
+
+	framebuffer.drawImage(runner_sprites, bar_width - 18, 4);
+}
+
+void draw_notes(Image& framebuffer, std::vector<Note>& notes, int key) {
+	float start_x = 180;
+	float target_x = 5;
 	double travel_time = 1.0;
-	double  late_time = 0.3;
-
-	double current_time = Game::instance->time;
-
+	double late_time = 0.3;
+	double current_time = Game::instance->time - song_delay;
 	for (int i = 0; i < notes.size(); i++)
 	{
 		Note& note = notes[i];
-
 		if (note.completed)
-			return;
-
+			continue;
 		double spawn_time = note.time - travel_time;
 
-		// no ha aparecido
 		if (current_time < spawn_time)
 			continue;
 
@@ -401,27 +477,81 @@ void drawNotes(Image& framebuffer, std::vector<Note>& notes, float x)
 			continue;
 
 		double progress = (current_time - spawn_time) / travel_time;
+		float x = start_x - progress * (start_x - target_x);
 
-		float y = start_y + progress * (target_y - start_y);
-
-		framebuffer.drawRectangle(x, y, 30, 3, 1);
+		if (key == UP) framebuffer.drawImage(note_sprites, x, 40, Area(42, 20, 17, 17));
+		else if (key == LEFT) framebuffer.drawImage(note_sprites, x, 60, Area(0, 20, 17, 17));
+		else if (key == RIGHT) framebuffer.drawImage(note_sprites, x, 80, Area(63, 20, 17, 17));
+		else if (key == DOWN) framebuffer.drawImage(note_sprites, x, 100, Area(21, 20, 17, 17));
 	}
 }
 
 void evaluate_note(double difference) {
 	if (difference < 0.1) {
-		score += 100;
+		score += NOTE_SCORE;
 		score_message = "PERFECT!";
 	}
 	else if (difference < 0.2) {
-		score += 50;
+		score += NOTE_SCORE / 2;
 		score_message = "GOOD";
 	}
 	else if (difference < 0.3) {
-		score += 10;
+		score += NOTE_SCORE / 10;
 		score_message = "MID";
 	}
 	else {
 		score_message = "MISS";
 	}
+}
+
+void update_notes(std::vector<Note>& notes, int& current_index)
+{
+	double current_time = Game::instance->time - song_delay;
+	const double late_time = 0.3;
+
+	while (current_index < (int)notes.size())
+	{
+		Note& note = notes[current_index];
+
+		if (note.completed) { 
+			current_index++; 
+		}
+        else if (current_time > note.time + late_time) {
+			note.completed = true;
+			current_index++;
+		}
+		else {
+			break;
+		}
+	}
+}
+
+int load_notes(const std::string& filename) {
+	std::ifstream file(filename);
+
+	if (!file.is_open()) {
+		std::cerr << "Failed to open notes file: " << filename << std::endl;
+		return -1;
+	}
+
+	double time;
+	std::string key;
+
+	while (file >> time >> key) {
+		Note Note = { time, false };
+		if (key == "U") {
+			up_notes.push_back(Note);
+		}
+		else if (key == "L") {
+			left_notes.push_back(Note);
+		}
+		else if (key == "R") {
+			right_notes.push_back(Note);
+		}
+		else if (key == "D") {
+			down_notes.push_back(Note);
+		}
+	}
+
+	return 1;
 }
