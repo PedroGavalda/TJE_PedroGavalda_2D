@@ -99,9 +99,17 @@ public:
 
 // MIO RITMO
 
+enum GameState {
+	MENU,
+	PLAYING,
+	GAME_OVER,
+	SONG_COMPLETE
+};
+
 struct Song {
 	std::string title;
-	std::string file_direction;
+	std::string notes_direction;
+	std::string track_direction;
 };
 
 struct Note {
@@ -109,13 +117,8 @@ struct Note {
 	bool completed;
 };
 
-struct Stage { 
-	Song song;
-	std::vector<Note> notes;
-	int max_score;
-};
 
-void init_song(Song song);
+bool init_song(const Song& song);
 
 void draw_rhythm_scene(Image& framebuffer);
 
@@ -124,6 +127,8 @@ void draw_progress_bar(Image& framebuffer);
 void draw_notes(Image& framebuffer, std::vector<Note>& notes, int key);
 
 void evaluate_note(double difference);
+
+void check_note(std::vector<Note>& notes, int& current_index, SDL_Scancode key);
 
 void update_notes(std::vector<Note>& notes, int& current_index);
 

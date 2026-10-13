@@ -7,13 +7,6 @@
 
 #include <cmath>
 
-#define UP 0
-#define LEFT 1
-#define RIGHT 2
-#define DOWN 3
-
-#define NOTE_SCORE 100
-
 Game* Game::instance = NULL;
 
 Image font;
@@ -22,6 +15,14 @@ Image sprite;
 Color bgcolor(130, 80, 100);
 
 // MIO RITMO
+
+#define UP 0
+#define LEFT 1
+#define RIGHT 2
+#define DOWN 3
+
+#define NOTE_SCORE 100
+
 int score = 0;
 std::string score_message;
 
@@ -37,21 +38,36 @@ std::vector<Note> down_notes;
 std::vector<Note> up_notes;
 std::vector<Note> right_notes;
 
+GameState game_state = MENU;
 Song song;
+std::vector<Song> songs = {
+	{ "Mario 1-1", "data/mario.txt", "data/mario3.wav" },
+};
+int selected_song_index = 0;
 double song_delay = 3.0;
+double countdown_start = 0.0;
+const double COUNTDOWN_DURATION = 3.0;
 bool music_started = false;
 int note_count;
 int max_score;
 
-Synth::Sample* mario_sample = nullptr;
-Synth::Sample* hit_sample = nullptr;
+float police_score = 0.0f;
+const double POLICE_DELAY = 5.0;
+int animation_index = 0;
 
 // RITMO ASSETS
+Image title;
+Image title_miku;
 Image note_sprites;
 Image runner_sprites;
 Image progress_bar;
 Image arrow_background;
 Image run_background;
+Image police_sprites;
+
+Synth::Sample* mario_sample = nullptr;
+Synth::Sample* hit_sample = nullptr;
+Synth::SamplePlayback* song_playback = nullptr;
 
 
 Game::Game(int window_width, int window_height, SDL_Window* window)
@@ -71,10 +87,13 @@ Game::Game(int window_width, int window_height, SDL_Window* window)
 	font.load("data/bitmap-font-white.tga"); //load bitmap-font image
 	minifont.load("data/mini-font-white-4x6.tga"); //load bitmap-font image
 	sprite.load("data/spritesheet.tga"); //example to load an sprite
-
+	
 	// RITMO
+	title.load("data/title.tga");
+	title_miku.load("data/mikuPS2/0001.png");
 	note_sprites.load("data/arrows.tga");
-	runner_sprites.load("data/miku_run_1.tga");
+	runner_sprites.load("data/miku_run.tga");
+	police_sprites.load("data/police.tga");
 	progress_bar.load("data/progress_bar.tga");
 	arrow_background.load("data/arrow_background.tga");
 	run_background.load("data/run_background.png");
@@ -84,37 +103,44 @@ Game::Game(int window_width, int window_height, SDL_Window* window)
 	hit_sample = synth.loadSample("data/mouseclick.wav");
 	//.osc1.amplitude = 0.5;
 
-	song = { "Mario 1-1", "data/mario.txt" };
-	load_notes(song.file_direction);
-	note_count = left_notes.size() + down_notes.size() + up_notes.size() + right_notes.size();
-	max_score = note_count * NOTE_SCORE;
+	init_song(songs[selected_song_index]);
 }
 
 //what to do when the image has to be draw
 void Game::render(void)
 {
-	//Create a new Image (or we could create a global one if we want to keep the previous frame)
 	Image framebuffer(160, 120); //do not change framebuffer size
 
-	//add your code here to fill the framebuffer
-	//...
+	if (game_state == MENU) {
+		framebuffer.fill(Color::BLACK);
+		framebuffer.drawImage(title, 0, 0);
+		framebuffer.drawImage(title_miku, 80, 60);
+		framebuffer.drawText("PRESS X TO START", 35, 50, font);
+	}
+	else if (game_state == PLAYING)
+	{
+		draw_rhythm_scene(framebuffer);
+		draw_notes(framebuffer, up_notes, UP);
+		draw_notes(framebuffer, left_notes, LEFT);
+		draw_notes(framebuffer, down_notes, DOWN);
+		draw_notes(framebuffer, right_notes, RIGHT);
+		draw_progress_bar(framebuffer);
+	}
+	else if (game_state == GAME_OVER)
+	{
+		framebuffer.drawText("GAME OVER", 35, 25, font);
+		framebuffer.drawText("SCORE: " + std::to_string(score),35, 45, font);
+		framebuffer.drawText("X: PLAY AGAIN", 35, 65, font);
+		framebuffer.drawText("Z: MENU", 35, 80, font);
+	}
+	else if (game_state == SONG_COMPLETE) {
+		framebuffer.fill(Color::BLACK);
+		framebuffer.drawText("SONG COMPLETE!", 25, 25, font);
+		framebuffer.drawText("SCORE: " + std::to_string(score),35, 50, font);
+		framebuffer.drawText("X: PLAY AGAIN", 30, 75, font);
+		framebuffer.drawText("Z:  MENU", 30, 90, font);
+	}
 
-	//some new useful functions
-		framebuffer.fill( bgcolor );								//fills the image with one color
-		//framebuffer.drawLine( 0, 0, 100,100, Color::RED );		//draws a line
-		//framebuffer.drawImage( sprite, 0, 0 );					//draws full image
-		//framebuffer.drawImage( sprite, 0, 0, framebuffer.width, framebuffer.height );			//draws a scaled image
-		//framebuffer.drawImage( sprite, 0, 0, Area(0,0,14,18) );	//draws only a part of an image
-		//framebuffer.drawText( "Hello World", 0, 0, font );				//draws some text using a bitmap font in an image (assuming every char is 7x9)
-		//framebuffer.drawText( toString(time), 1, 10, minifont,4,6);	//draws some text using a bitmap font in an image (assuming every char is 4x6)
-		
-	draw_rhythm_scene(framebuffer);
-	draw_notes(framebuffer, up_notes, UP);
-	draw_notes(framebuffer, left_notes, LEFT);
-	draw_notes(framebuffer, down_notes, DOWN);
-	draw_notes(framebuffer, right_notes, RIGHT);
-	draw_progress_bar(framebuffer);
-		
 	//send image to screen
 	showFramebuffer(&framebuffer);
 }
@@ -122,10 +148,65 @@ void Game::render(void)
 void Game::update(double seconds_elapsed)
 {
 	//Add here your update method
-	//...
+	//Read the keyboard state, to see all the keycodes: https://wiki.libsdl.org/SDL_Keycode
+	
+	if (game_state == MENU) {
+		if (Input::wasKeyPressed(SDL_SCANCODE_X)) {
+			if (init_song(songs[selected_song_index])) {
+				countdown_start = time;
+				song_delay = time + COUNTDOWN_DURATION;
+				game_state = PLAYING;
+			}
+		}
+		return;
+	}
+	
+	if (game_state == SONG_COMPLETE) {
+		if (Input::wasKeyPressed(SDL_SCANCODE_X)) {
+			if (init_song(songs[selected_song_index])) {
+				countdown_start = time;
+				song_delay = time + COUNTDOWN_DURATION;
+				game_state = PLAYING;
+			}
+		}
+
+		if (Input::wasKeyPressed(SDL_SCANCODE_Z)) {
+			game_state = MENU;
+		}
+
+		return;
+	}
+
+	if (game_state == GAME_OVER) {
+		if (song_playback != nullptr) {
+			song_playback->stop();
+			song_playback = nullptr;
+		}
+
+		music_started = false;
+
+		if (Input::wasKeyPressed(SDL_SCANCODE_X)) {
+			if (init_song(songs[selected_song_index])) {
+				countdown_start = time;
+				song_delay = time + COUNTDOWN_DURATION;
+				game_state = PLAYING;
+			}
+		}
+
+		if (Input::wasKeyPressed(SDL_SCANCODE_Z)) {
+			game_state = MENU;
+		}
+
+		return;
+	}
+
+	if (game_state != PLAYING)
+		return;
+
 	if (!music_started && time >= song_delay)
-	{
-		synth.playSample(mario_sample, 1.0f, false);
+	{	
+		song_playback = synth.playSample(mario_sample, 1.0f, false);
+		//synth.playSample(mario_sample, 1.0f, false);
 		music_started = true;
 	}
 
@@ -134,85 +215,22 @@ void Game::update(double seconds_elapsed)
 	update_notes(up_notes, current_up);
 	update_notes(right_notes, current_right);
 
-	//Read the keyboard state, to see all the keycodes: https://wiki.libsdl.org/SDL_Keycode
-	if (Input::isKeyPressed(SDL_SCANCODE_UP)) //if key up
-	{
-	}
-	if (Input::isKeyPressed(SDL_SCANCODE_DOWN)) //if key down
-	{
-	}
-	/*
-	if (current_note >= size)
-	{
+	if (current_left >= left_notes.size() && current_down >= down_notes.size() && current_up >= up_notes.size() && current_right >= right_notes.size()) {	
+		game_state = SONG_COMPLETE;
 		return;
-	}*/
-
-	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT)) {
-		if (current_left < left_notes.size()) {
-			Note& note = left_notes[current_left];
-			difference = fabs(note.time - (time - song_delay));
-
-			if (difference <= 0.3) {
-				evaluate_note(difference);
-				note.completed = true;
-				current_left++;
-			}
-		}
 	}
 
-	if (Input::wasKeyPressed(SDL_SCANCODE_DOWN)) {
-		if (current_down < down_notes.size()) {
-			Note& note = down_notes[current_down];
-			difference = fabs(note.time - (time - song_delay));
-			
-			if (difference <= 0.3) {
-				evaluate_note(difference);
-				note.completed = true;
-				current_down++;
-			}
-		}
-	}
-	
-	if (Input::wasKeyPressed(SDL_SCANCODE_UP)) {
-		if (current_up < up_notes.size()) {
-			Note& note = up_notes[current_up];
-			difference = fabs(note.time - (time - song_delay));
-
-			if (difference <= 0.3) {
-				evaluate_note(difference);
-				note.completed = true;
-				current_up++;
-			}
-		}
-	}
-
-	if (Input::wasKeyPressed(SDL_SCANCODE_RIGHT)) {
-		if (current_right < right_notes.size()) {
-			Note& note = right_notes[current_right];
-			difference = fabs(note.time - (time - song_delay));
-			
-			if (difference <= 0.3) {
-				evaluate_note(difference);
-				note.completed = true;
-				current_right++;
-			}
-		}
-	}
+	check_note(left_notes, current_left, SDL_SCANCODE_LEFT);
+	check_note(down_notes, current_down, SDL_SCANCODE_DOWN);
+	check_note(up_notes, current_up, SDL_SCANCODE_UP);
+	check_note(right_notes, current_right, SDL_SCANCODE_RIGHT);
 
 	// podria evitar duplicidad aqui
-	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT) || Input::wasKeyPressed(SDL_SCANCODE_RIGHT) || Input::wasKeyPressed(SDL_SCANCODE_UP) || Input::wasKeyPressed(SDL_SCANCODE_DOWN)) 
+	if (Input::wasKeyPressed(SDL_SCANCODE_LEFT) || Input::wasKeyPressed(SDL_SCANCODE_RIGHT) || Input::wasKeyPressed(SDL_SCANCODE_UP) || Input::wasKeyPressed(SDL_SCANCODE_DOWN))
 	{
 		synth.playSample(hit_sample, 0.5f, false);
 	}
-
-	if (Input::wasKeyPressed(SDL_SCANCODE_A)) //if key A was pressed
-	{
 	
-	}
-	if (Input::wasKeyPressed(SDL_SCANCODE_Z)) //if key Z was pressed
-	{
-	}
-
 	//to read the gamepad state
 	if (Input::gamepads[0].isButtonPressed(A_BUTTON)) //if the A button is pressed
 	{
@@ -379,56 +397,14 @@ void Game::onAudio(float *buffer, unsigned int len, double time, SDL_AudioSpec& 
 	synth.generateAudio(buffer, len, audio_spec);
 }
 
-// COSAS AÑADIDAS QUE QUIZAS NO ME SIRVEN
-GameMap* loadGameMap(const char* filename) {
-	using json = nlohmann::json;
-	std::ifstream f(filename);
-	if (!f.good())
-		return nullptr;
-	json jData = json::parse(f);
-
-	int w = jData["width"];
-	int h = jData["height"];
-	int numLayers = jData["layers"].size();
-
-	GameMap* map = new GameMap(w, h);
-	//Allocate memory for data inside each layer
-	map->layers = new sLayer[numLayers];
-	map->tile_width = jData["tilewidth"];
-	map->tile_height = jData["tileheight"];
-
-	for (int l = 0; l < numLayers; l++) {
-		//Allocate memory for data inside each layer
-		map->layers[l].data = new sCell[w * h];
-		json layer = jData["layers"][l];
-		for (int x = 0; x < map->width; x++) {
-			for (int y = 0; y < map->height;y++) {
-				int index = x + y * map->width;
-				int tileId = layer["data"][index].get<int>() - 1;
-				sCell& cell = map->getCell(x, y, l);
-				cell.tileId = tileId;
-				if (l == 0) {
-					if (tileId == 652) { //Change Id if you want
-						cell.type = EMPTY;
-					}
-					else if (tileId == 910) { //Change Id If you want
-						cell.type = WALL;
-					}
-				}
-			}
-		}
-	}
-	return map;
-}
-
 // MIO RITMO
 void draw_rhythm_scene(Image& framebuffer)
 {
 	// background
 	framebuffer.drawImage(run_background, 0, 0);
 	framebuffer.drawImage(arrow_background, 0, 0);
+	
 	// arrow background
-
 	framebuffer.drawImage(note_sprites, 10, 60, Area(0, 0, 17, 17));	//left arrow
 	framebuffer.drawImage(note_sprites,	10, 100, Area(21, 0, 17, 17));	//down arrow
 	framebuffer.drawImage(note_sprites,	10, 40, Area(42, 0, 17, 17));	//up arrow
@@ -441,19 +417,22 @@ void draw_progress_bar(Image& framebuffer) {
 		return;
 
 	float progress = (float)score / max_score;
+	float police_progress = (float)police_score / max_score;
 
-	if (progress > 1.0f)
-		progress = 1.0f;
-
-	if (progress < 0.0f)
-		progress = 0.0f;
+	if (progress > 1.0f) progress = 1.0f;
+	if (police_progress > 1.0f) police_progress = 1.0f;
+	if (progress < 0.0f) progress = 0.0f;
+	if (police_progress < 0.0f) police_progress = 0.0f;
 
 	int bar_width = (int)(progress * 158);
+	int police_width = (int)(police_progress * 158);
 
 	framebuffer.drawRectangle(1, 35, bar_width, 3, Color::CYAN);
+	framebuffer.drawRectangle(1, 35, police_width, 3, Color::GREEN);
 	framebuffer.drawImage(progress_bar, 0, 0);
 
-	framebuffer.drawImage(runner_sprites, bar_width - 18, 4);
+	framebuffer.drawImage(runner_sprites, bar_width - 18, 4, Area(18 * animation_index, 0, 18, 30));
+	framebuffer.drawImage(police_sprites, police_width - 38, 4 - animation_index);
 }
 
 void draw_notes(Image& framebuffer, std::vector<Note>& notes, int key) {
@@ -500,6 +479,7 @@ void evaluate_note(double difference) {
 		score_message = "MID";
 	}
 	else {
+		police_score += NOTE_SCORE;
 		score_message = "MISS";
 	}
 }
@@ -518,11 +498,36 @@ void update_notes(std::vector<Note>& notes, int& current_index)
 		}
         else if (current_time > note.time + late_time) {
 			note.completed = true;
+			if (current_time > POLICE_DELAY)  police_score += NOTE_SCORE;
 			current_index++;
 		}
 		else {
 			break;
 		}
+	}
+
+	if (police_score > score) {
+		game_state = GAME_OVER;
+	}
+}
+
+
+void check_note(std::vector<Note>& notes, int& current_index, SDL_Scancode key)
+{
+	if (!Input::wasKeyPressed(key)) return;
+
+	if (current_index >= (int)notes.size()) return;
+
+	Note& note = notes[current_index];
+	double current_time = Game::instance->time - song_delay;
+	double difference = fabs(note.time - (current_time));
+	animation_index = 1 - animation_index;
+
+	if (difference <= 0.3) {
+		evaluate_note(difference);
+		note.completed = true;
+		if (current_time > POLICE_DELAY) police_score += NOTE_SCORE * (1.0f - (float)(difference / 0.3f));
+		current_index++;
 	}
 }
 
@@ -554,4 +559,34 @@ int load_notes(const std::string& filename) {
 	}
 
 	return 1;
+}
+
+bool init_song(const Song& selected_song) {
+	song = selected_song;
+
+	up_notes.clear();
+	left_notes.clear();
+	right_notes.clear();
+	down_notes.clear();
+
+	current_up = 0;
+	current_left = 0;
+	current_right = 0;
+	current_down = 0;
+
+	score = 0;
+	police_score = 0;
+	score_message = "";
+	difference = 0.0;
+	music_started = false;
+
+	if (load_notes(song.notes_direction) < 0) {
+		std::cerr << "ERROR loading notes for " << song.title << std::endl;
+		return false;
+	}
+
+	note_count = left_notes.size() + down_notes.size() + up_notes.size() +right_notes.size();
+	max_score = note_count * NOTE_SCORE;
+
+	return true;
 }
